@@ -9,18 +9,25 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// -------------------- Configuration --------------------
+builder.Configuration
+       .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+       .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+       .AddEnvironmentVariables(); // permite sobrescrever configs via ENV
+
 // -------------------- Database --------------------
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
+    options.UseNpgsql(connStr);
+});
 
 // -------------------- Identity --------------------
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
-    // LOGIN POR TELEFONE
-    options.User.RequireUniqueEmail = false; // email não é obrigatório
-    options.SignIn.RequireConfirmedPhoneNumber = true; // exigir confirmação do telefone
+    options.User.RequireUniqueEmail = false;
+    options.SignIn.RequireConfirmedPhoneNumber = true;
 
-    // Regras de senha
     options.Password.RequireDigit = true;
     options.Password.RequireLowercase = true;
     options.Password.RequireUppercase = false;
@@ -28,7 +35,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequiredLength = 6;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders(); // necessário para token via telefone
+.AddDefaultTokenProviders();
 
 // -------------------- JWT Authentication --------------------
 var key = Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]);
@@ -40,7 +47,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false;
+    options.RequireHttpsMetadata = true; // obrigatório HTTPS em produção
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
@@ -97,6 +104,10 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseCors("AllowAll");
+app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
 
 if (app.Environment.IsDevelopment())
 {
@@ -104,13 +115,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-app.UseAuthentication();
-app.UseAuthorization();
-
-app.MapControllers();
-
-// -------------------- Seed Roles & Admin --------------------
+// -------------------- Seed Roles & AdminMaster --------------------
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
@@ -124,8 +129,10 @@ using (var scope = app.Services.CreateScope())
             await roleManager.CreateAsync(new IdentityRole(role));
     }
 
-    // Criar AdminMaster padrão
-    var adminPhone = "41998431178"; // DDD + número
+    // Criar AdminMaster padrão via ENV (não hardcoded)
+    var adminPhone = Environment.GetEnvironmentVariable("ADMIN_PHONE") ?? "41998431178";
+    var adminPassword = Environment.GetEnvironmentVariable("ADMIN_PASSWORD") ?? "Master123!";
+
     var masterUser = await userManager.Users.FirstOrDefaultAsync(x => x.PhoneNumber == adminPhone);
 
     if (masterUser == null)
@@ -134,13 +141,13 @@ using (var scope = app.Services.CreateScope())
         {
             UserName = adminPhone,
             PhoneNumber = adminPhone,
-            PhoneNumberConfirmed = true, // confirmar automaticamente o admin
+            PhoneNumberConfirmed = true,
             NomeCompleto = "Administrador Master",
             TipoUsuario = UserRoles.AdminMaster,
             Nivel = UserLevels.AdminMaster
         };
 
-        var result = await userManager.CreateAsync(masterUser, "Master123!");
+        var result = await userManager.CreateAsync(masterUser, adminPassword);
         if (result.Succeeded)
         {
             await userManager.AddToRoleAsync(masterUser, UserRoles.AdminMaster);
