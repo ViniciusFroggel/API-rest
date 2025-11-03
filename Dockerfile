@@ -6,14 +6,14 @@ WORKDIR /app
 COPY *.sln ./
 COPY SistemaBarbearia/*.csproj ./SistemaBarbearia/
 
-# Restaurar dependências
-RUN dotnet restore
+# Restaurar dependências do projeto
+RUN dotnet restore SistemaBarbearia/SistemaBarbearia.csproj
 
 # Copiar todo o restante do código
 COPY . ./
 
-# Publicar
-RUN dotnet publish -c Release -o /app/publish
+# Publicar apenas o projeto
+RUN dotnet publish SistemaBarbearia/SistemaBarbearia.csproj -c Release -o /app/publish
 
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
