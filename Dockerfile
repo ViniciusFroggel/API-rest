@@ -2,7 +2,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /app
 
-# Copiar solução e projeto
+# Copiar solução e projetos
 COPY *.sln ./
 COPY *.csproj ./
 
@@ -12,7 +12,7 @@ RUN dotnet restore
 # Copiar todo o código fonte
 COPY . ./
 
-# Publicar a aplicação
+# Publicar
 RUN dotnet publish -c Release -o /app/publish
 
 # Stage 2: Runtime
