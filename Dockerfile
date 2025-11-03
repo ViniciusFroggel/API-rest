@@ -1,19 +1,27 @@
-# Build
+# ---- Build Stage ----
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copiar apenas o .sln e o csproj(s)
+# Copiar solução
 COPY *.sln ./
-COPY *.csproj ./   # <- alterado para copiar diretamente da raiz
+
+# Criar pasta para os projetos e copiar csproj
+RUN mkdir SistemaBarbearia
+COPY *.csproj ./SistemaBarbearia/
+
+# Restaurar dependências
+WORKDIR /src/SistemaBarbearia
 RUN dotnet restore
 
-# Copiar tudo e buildar
+# Copiar todo o restante do código
 COPY . ./
-WORKDIR /src
+
+# Publicar em Release
 RUN dotnet publish -c Release -o /app
 
-# Runtime
+# ---- Runtime Stage ----
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 COPY --from=build /app ./
+
 ENTRYPOINT ["dotnet", "SistemaBarbearia.dll"]
