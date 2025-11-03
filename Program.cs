@@ -1,27 +1,26 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+ï»¿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using SistemaBarbearia.Data;
 using SistemaBarbearia.Models;
+using SistemaBarbearia.Enums;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ======================
-// Configurações de serviços
-// ======================
-
-// Controllers
-builder.Services.AddControllers();
-
-// Banco de Dados
+// -------------------- Database --------------------
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Identity + Roles
+// -------------------- Identity --------------------
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
+    // LOGIN POR TELEFONE
+    options.User.RequireUniqueEmail = false; // email nÃ£o Ã© obrigatÃ³rio
+    options.SignIn.RequireConfirmedPhoneNumber = true; // exigir confirmaÃ§Ã£o do telefone
+
+    // Regras de senha
     options.Password.RequireDigit = true;
     options.Password.RequireLowercase = true;
     options.Password.RequireUppercase = false;
@@ -29,9 +28,9 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequiredLength = 6;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders();
+.AddDefaultTokenProviders(); // necessÃ¡rio para token via telefone
 
-// JWT
+// -------------------- JWT Authentication --------------------
 var key = Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]);
 
 builder.Services.AddAuthentication(options =>
@@ -55,27 +54,18 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// CORS
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll", policy =>
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
-});
-
-// Swagger + Autorização
+// -------------------- Swagger --------------------
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new() { Title = "SistemaBarbearia API", Version = "v1" });
-
     c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
     {
         Name = "Authorization",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
         Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
         Scheme = "Bearer",
         BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Digite: Bearer {seu token}"
+        Description = "Digite: Bearer {seu token aqui}"
     });
 
     c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
@@ -88,16 +78,24 @@ builder.Services.AddSwaggerGen(c =>
                     Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
                     Id = "Bearer"
                 }
-            }, new string[] {}
+            },
+            Array.Empty<string>()
         }
     });
 });
 
+// -------------------- Controllers --------------------
+builder.Services.AddControllers();
+
+// -------------------- CORS --------------------
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+});
+
 var app = builder.Build();
 
-// ======================
-// Middleware
-// ======================
 app.UseCors("AllowAll");
 
 if (app.Environment.IsDevelopment())
@@ -107,21 +105,18 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// ======================
-// Criação automática de Roles e Admin
-// ======================
+// -------------------- Seed Roles & Admin --------------------
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
-    string[] roles = { "Funcionario", "Cliente" };
+    string[] roles = { UserRoles.Cliente, UserRoles.Funcionario, UserRoles.Admin, UserRoles.AdminMaster };
 
     foreach (var role in roles)
     {
@@ -129,24 +124,35 @@ using (var scope = app.Services.CreateScope())
             await roleManager.CreateAsync(new IdentityRole(role));
     }
 
-    // Criar Admin automaticamente
-    var adminEmail = "admin@teste.com";
-    var adminUser = await userManager.FindByEmailAsync(adminEmail);
+    // Criar AdminMaster padrÃ£o
+    var adminPhone = "41998431178"; // DDD + nÃºmero
+    var masterUser = await userManager.Users.FirstOrDefaultAsync(x => x.PhoneNumber == adminPhone);
 
-    if (adminUser == null)
+    if (masterUser == null)
     {
-        adminUser = new ApplicationUser
+        masterUser = new ApplicationUser
         {
-            UserName = adminEmail,
-            Email = adminEmail,
-            TipoUsuario = "Funcionario",
-            NomeCompleto = "Administrador Teste"
+            UserName = adminPhone,
+            PhoneNumber = adminPhone,
+            PhoneNumberConfirmed = true, // confirmar automaticamente o admin
+            NomeCompleto = "Administrador Master",
+            TipoUsuario = UserRoles.AdminMaster,
+            Nivel = UserLevels.AdminMaster
         };
 
-        var result = await userManager.CreateAsync(adminUser, "Senha123!");
+        var result = await userManager.CreateAsync(masterUser, "Master123!");
         if (result.Succeeded)
-            await userManager.AddToRoleAsync(adminUser, "Funcionario");
+        {
+            await userManager.AddToRoleAsync(masterUser, UserRoles.AdminMaster);
+        }
     }
+}
+
+// -------------------- Apply Migrations --------------------
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.Migrate();
 }
 
 app.Run();
