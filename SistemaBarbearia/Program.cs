@@ -9,16 +9,17 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// -------------------- Configuration --------------------
-builder.Configuration
-       .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
-       .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
-       .AddEnvironmentVariables(); // permite sobrescrever configs via ENV
-
 // -------------------- Database --------------------
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 {
-    var connStr = builder.Configuration.GetConnectionString("DefaultConnection");
+    var dbHost = Environment.GetEnvironmentVariable("DB_HOST");
+    var dbName = Environment.GetEnvironmentVariable("DB_NAME");
+    var dbUser = Environment.GetEnvironmentVariable("DB_USER");
+    var dbPassword = Environment.GetEnvironmentVariable("DB_PASSWORD");
+    var dbPort = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
+    var dbSSL = Environment.GetEnvironmentVariable("DB_SSL") ?? "true";
+
+    var connStr = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};SSL Mode={(dbSSL.ToLower() == "true" ? "Require" : "Disable")};Trust Server Certificate=true;";
     options.UseNpgsql(connStr);
 });
 
@@ -38,7 +39,8 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddDefaultTokenProviders();
 
 // -------------------- JWT Authentication --------------------
-var key = Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]);
+var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")!;
+var key = Encoding.UTF8.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -55,8 +57,8 @@ builder.Services.AddAuthentication(options =>
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidIssuer = builder.Configuration["Jwt:Issuer"],
-        ValidAudience = builder.Configuration["Jwt:Audience"],
+        ValidIssuer = Environment.GetEnvironmentVariable("JWT_ISSUER"),
+        ValidAudience = Environment.GetEnvironmentVariable("JWT_AUDIENCE"),
         IssuerSigningKey = new SymmetricSecurityKey(key)
     };
 });
@@ -129,7 +131,7 @@ using (var scope = app.Services.CreateScope())
             await roleManager.CreateAsync(new IdentityRole(role));
     }
 
-    // Criar AdminMaster padrão via ENV (não hardcoded)
+    // Criar AdminMaster via ENV
     var adminPhone = Environment.GetEnvironmentVariable("ADMIN_PHONE") ?? "41998431178";
     var adminPassword = Environment.GetEnvironmentVariable("ADMIN_PASSWORD") ?? "Master123!";
 
