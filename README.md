@@ -11,9 +11,13 @@
 ## 🧰 Tecnologias Utilizadas
 
 **ASP.NET** Core	Framework da API
+
 **Entity Framework** Core	ORM para o banco de dados
+
 **SQL Server Local**	Banco de dados usado no ambiente local
+
 **ASP.NET Identity**	Gerenciamento de usuários e roles
+
 **JWT** (JSON Web Token)	Autenticação e Autorizações
 
 ## 🔐 Autenticação & Controle de Acesso
